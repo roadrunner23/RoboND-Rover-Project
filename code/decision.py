@@ -35,6 +35,34 @@ def decision_step(Rover):
                     Rover.steer = 0
                     Rover.mode = 'stop'
 
+            # If Rover is stuck for more than 5s then rotate Rover 45 degrees
+            # Calculate stuck time
+            if Rover.vel < 0.2 and Rover.fps is not None:
+                Rover.stuck_time += 1 / Rover.fps
+                print('Rover stuck time: {0:.2f}s'.format(Rover.stuck_time))
+            else:
+                Rover.stuck_time = 0
+
+            # Check if rover is stuck for more than 5s
+            if Rover.stuck_time > 5:
+                # Obtain yaw difference
+                if Rover.stuck_yaw is None:
+                    Rover.stuck_yaw = Rover.yaw
+                yaw_diff = abs(Rover.yaw - Rover.stuck_yaw)
+                if yaw_diff > 180:
+                    yaw_diff = 360 - yaw_diff
+
+                # Rotate Rover until yaw difference is 45 degrees 
+                if yaw_diff < 45:
+                    Rover.throttle = 0
+                    # Release the brake to allow turning
+                    Rover.brake = 0
+                    # Turn range is +/- 15 degrees, when stopped the next line will induce 4-wheel turning
+                    Rover.steer = -15 # Could be more clever here about which way to turn
+                else:
+                    Rover.stuck_time = 0
+                    Rover.stuck_yaw = None
+
         # If we're already in "stop" mode then make different decisions
         elif Rover.mode == 'stop':
             # If we're in stop mode but still moving keep braking
@@ -66,7 +94,23 @@ def decision_step(Rover):
         Rover.throttle = Rover.throttle_set
         Rover.steer = 0
         Rover.brake = 0
-        
+    
+    # Check if we have located a rock 
+    if Rover.rock_angles is not None:
+        if len(Rover.rock_angles) > 0:
+            # Steer Rover towards the rock
+            Rover.steer = np.clip(np.mean(Rover.rock_angles * 180/np.pi), -15, 15)
+            # Start to slow down when 1m away from rock
+            if max(Rover.rock_dists) < 10:
+                # Set mode to "stop" and hit the brakes!
+                Rover.throttle = 0
+                # Set brake to stored brake value
+                Rover.brake = Rover.brake_set
+            # If Rover stops too soon, go forward.
+            if Rover.vel < 0.2 and not Rover.near_sample:
+                Rover.throttle = Rover.throttle_set
+                Rover.brake = 0
+
     # If in a state where want to pickup a rock send pickup command
     if Rover.near_sample and Rover.vel == 0 and not Rover.picking_up:
         Rover.send_pickup = True

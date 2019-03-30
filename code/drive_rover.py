@@ -1,3 +1,6 @@
+import sys
+sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
+
 # Do the necessary imports
 import argparse
 import shutil
@@ -40,6 +43,9 @@ class RoverState():
     def __init__(self):
         self.start_time = None # To record the start time of navigation
         self.total_time = None # To record total duration of naviagation
+        self.stuck_time = 0
+        self.stuck_yaw = None
+        self.fps = None
         self.img = None # Current camera image
         self.pos = None # Current position (x, y)
         self.yaw = None # Current yaw angle
@@ -51,6 +57,8 @@ class RoverState():
         self.brake = 0 # Current brake value
         self.nav_angles = None # Angles of navigable terrain pixels
         self.nav_dists = None # Distances of navigable terrain pixels
+        self.rock_angles = None
+        self.rock_dists = None
         self.ground_truth = ground_truth_3d # Ground truth worldmap
         self.mode = 'forward' # Current mode (can be forward or stop)
         self.throttle_set = 0.2 # Throttle setting when accelerating
@@ -59,7 +67,7 @@ class RoverState():
         # of navigable terrain pixels.  This is a very crude form of knowing
         # when you can keep going and when you should stop.  Feel free to
         # get creative in adding new fields or modifying these!
-        self.stop_forward = 50 # Threshold to initiate stopping
+        self.stop_forward = 70 # Threshold to initiate stopping
         self.go_forward = 500 # Threshold to go forward again
         self.max_vel = 2 # Maximum velocity (meters/second)
         # Image output from perception step
@@ -105,7 +113,9 @@ def telemetry(sid, data):
         global Rover
         # Initialize / update Rover with current telemetry
         Rover, image = update_rover(Rover, data)
-
+        if fps is not None and fps > 1:
+            Rover.fps = fps
+        
         if np.isfinite(Rover.vel):
 
             # Execute the perception and decision steps to update the Rover's state
@@ -119,7 +129,7 @@ def telemetry(sid, data):
  
             # Don't send both of these, they both trigger the simulator
             # to send back new telemetry so we must only send one
-            # back in respose to the current telemetry data.
+            # back in response to the current telemetry data.
 
             # If in a state where want to pickup a rock send pickup command
             if Rover.send_pickup and not Rover.picking_up:
@@ -173,6 +183,7 @@ def send_control(commands, image_string1, image_string2):
         data,
         skip_sid=True)
     eventlet.sleep(0)
+
 # Define a function to send the "pickup" command 
 def send_pickup():
     print("Picking up")
@@ -182,6 +193,7 @@ def send_pickup():
         pickup,
         skip_sid=True)
     eventlet.sleep(0)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Remote Driving')
     parser.add_argument(
